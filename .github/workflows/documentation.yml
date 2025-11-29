@@ -1,0 +1,92 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-docs:
+    name: 验证文档
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置Dart环境
+      uses: dart-lang/setup-dart@v1
+      with:
+        sdk: stable
+        
+    - name: 获取依赖
+      run: dart pub get
+      
+    - name: 验证文档完整性
+      run: dart run tools/generate_docs.dart validate
+      
+    - name: 生成API文档
+      run: dart run tools/generate_docs.dart generate
+      
+    - name: 检查Markdown格式
+      uses: DavidAnson/markdownlint-cli2-action@v16
+      with:
+        globs: |
+          **/*.md
+          !doc/**
+          !.dart_tool/**
+        config: |
+          {
+            "MD013": false,
+            "MD033": false,
+            "MD041": false
+          }
+        
+    - name: 上传文档构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: api-docs
+        path: doc/api/
+        retention-days: 30
+
+  deploy-docs:
+    name: 部署文档
+    runs-on: ubuntu-latest
+    needs: validate-docs
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+      
+    - name: 设置Dart环境
+      uses: dart-lang/setup-dart@v1
+      with:
+        sdk: stable
+        
+    - name: 获取依赖
+      run: dart pub get
+      
+    - name: 生成API文档
+      run: dart run tools/generate_docs.dart generate
+      
+    - name: 部署到GitHub Pages
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./doc/api
+        destination_dir: api
+        
+    - name: 复制Markdown文档
+      run: |
+        mkdir -p ./docs
+        cp *.md ./docs/
+        cp -r doc/api ./docs/
+        
+    - name: 部署Markdown文档
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs
+        keep_files: false
